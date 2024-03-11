@@ -1,0 +1,127 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.iRowCnt.Declare(Long)
+V.Local.iCount.Declare(Long)
+V.Local.sReadRow.Declare(String)
+V.Local.sPart.Declare(String)
+V.Local.sRev.Declare(String)
+V.Local.sBin.Declare(String)
+V.Local.sLot.Declare(String)
+V.Local.sHeat.Declare(String)
+V.Local.sSerial.Declare(String)
+V.Local.SToPart.Declare(String)
+V.Local.sSql.Declare(String)
+V.Local.iQty.Declare(Float)
+V.Local.iConver.Declare(Float)
+V.Local.iGross.Declare(Float)
+V.Local.iTare.Declare(Float)
+V.Local.bTask.Declare(Boolean)
+
+F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+F.Intrinsic.Control.SelectCase(V.Caller.Hook)
+	F.Intrinsic.Control.Case("28072")
+	
+		V.Local.sPart.Set(V.Passed.000005.Trim)
+		V.Local.sRev.Set(V.Passed.000006.Trim)
+		F.Intrinsic.String.GSSPartString(V.Local.sPart,V.Local.sRev,V.Local.sPart)
+		V.Local.iConver.Set(V.Passed.000044)
+		F.Intrinsic.BDF.Load("AUX001","AUX001")
+		F.Intrinsic.BDF.ReadRowCount("AUX001",V.Local.iRowCnt)
+		F.Intrinsic.Math.Sub(V.Local.iRowCnt,1,V.Local.iRowCnt)
+
+		F.Intrinsic.Control.For(V.Local.iCount,0,V.Local.iRowCnt,1)
+			F.Intrinsic.BDF.ReadRow("AUX001",V.Local.iCount,V.Local.sReadRow)
+			F.Intrinsic.String.Split(V.Local.sReadRow,"|~|",V.Local.sReadRow)
+
+			F.Intrinsic.Control.If(V.Local.sReadRow(0),=,"Y")
+				V.Local.sBin.Set(V.Local.sReadRow(1).Trim)
+				V.Local.sLot.Set(V.Local.sReadRow(2).Trim)
+				V.Local.sHeat.Set(V.Local.sReadRow(3).Trim)
+				V.Local.sSerial.Set(V.Local.sReadRow(4).Trim)
+				V.Local.iQty.Set(V.Local.sReadRow(6))
+				F.Intrinsic.String.Build("Select * From Item_Master Where Part = '{0}' and Lot = '{1}' and Bin = '{2}' and Heat = '{3}' and Serial_Number = '{4}'",V.Local.sPart.Trim,V.Local.sLot.Trim,V.Local.sBin.Trim,V.Local.sHeat.Trim,V.Local.sSerial.Trim,V.Local.sSql)
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rstFrom",V.Local.sSql)
+
+				F.Intrinsic.Control.If(V.ODBC.conx!rstFrom.EOF,=,False)
+					V.Local.iGross.Set(V.ODBC.conx!rstFrom.FieldVal!User_Field_2)
+					V.Local.iTare.Set(V.ODBC.conx!rstFrom.FieldVal!User_Field_1)
+
+					F.Intrinsic.Control.If(V.Local.iConver,!=,0)
+						F.Intrinsic.Math.Div(V.Local.iGross,V.Local.iConver,V.Local.iGross)
+						F.Intrinsic.Math.Div(V.Local.iTare,V.Local.iConver,V.Local.iTare)
+					F.Intrinsic.Control.EndIf
+					
+					F.Intrinsic.String.Format(V.Local.iGross,"######.####",V.Local.iGross)
+					F.Intrinsic.String.Format(V.Local.iTare,"######.####",V.Local.iTare)
+					V.Local.SToPart.Set(V.Passed.000141.Trim)
+					F.Intrinsic.String.GSSPartString(V.Local.SToPart,V.Passed.000142.Trim,V.Local.SToPart)
+					F.Intrinsic.String.Build("Select User_Field_1, User_Field_2 from Item_Master Where Part = '{0}' and Bin = '{1}' and Lot = '{2}' and Heat = '{3}' and Serial_Number = '{4}'",V.Local.sToPart.Trim,V.Passed.000012.Trim,V.Local.sLot.Trim,V.Local.sHeat.Trim,V.Local.sSerial.Trim,V.Local.sSql)
+					F.ODBC.Connection!conx.OpenRecordsetRW("rstTo",V.Local.sSql)
+
+					V.Local.bTask.Set(True)
+					F.Intrinsic.Control.DoUntil(V.Local.bTask,=,False)
+						F.Intrinsic.Task.PIDRunning(V.Caller.PID,V.Local.bTask)
+						F.Intrinsic.UI.Sleep(1)
+					F.Intrinsic.Control.Loop
+
+					F.Intrinsic.Control.If(V.ODBC.conx!rstTo.EOF,=,False)
+						F.ODBC.conx!rstTo.Set!User_Field_1(V.Local.iTare)
+						F.ODBC.conx!rstTo.Set!User_Field_2(V.Local.iGross)
+						F.ODBC.conx!rstTo.Update
+					F.Intrinsic.Control.EndIf
+					F.ODBC.conx!rstTo.Close
+				F.Intrinsic.Control.EndIf
+
+				F.ODBC.conx!rstFrom.Close
+			F.Intrinsic.Control.EndIf
+		
+		F.Intrinsic.Control.Next(V.Local.iCount)
+	
+F.Intrinsic.Control.EndSelect
+
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3949_LEI_ConvFac.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+F.ODBC.Connection!conx.Close
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_3949_LEI_ConvFac.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Unload.End
+
+
